@@ -1,5 +1,11 @@
 # Kuma
 
+slack:
+
+https://chat.kuma.io
+
+kuma.io/instll
+
 
 Trend
 
