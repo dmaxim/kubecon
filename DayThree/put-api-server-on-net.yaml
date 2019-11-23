@@ -1,0 +1,25 @@
+cat <<EOF | kubectl --token "$TOKEN" --insecure-skip-tls-verify --server=https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-mgmt
+  namespace: kube-system
+spec:
+  type: NodePort
+  ports:
+    - protocol: TCP
+      nodePort: 31313
+      port: 31313
+      targetPort: $KUBERNETES_SERVICE_PORT
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: istio-mgmt
+  namespace: kube-system
+subsets:
+  - addresses:
+      - ip: `sed -n 's/^  *server: https:\/\///p' /var/lib/kubelet/kubeconfig`
+    ports:
+      - port: $KUBERNETES_SERVICE_PORT
+EOF
