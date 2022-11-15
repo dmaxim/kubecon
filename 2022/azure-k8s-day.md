@@ -15,6 +15,31 @@ Means more successful developers and better outcomes for your business
 - Improved collaboration
 - Better software
 
+
+# Manage multiple clusters with K8s fleet manager
+
+Demo
+
+Create a fleet manager hub and add clusters to it
+
+# Azure Servie Operator
+
+K8s native way to deploy Azure resources
+
+Connect 
+
+````
+export IDENTITY=$(az ad signed-in-user show --query "id" --output tsv)
+export ROLE="Azure Kubernetes Fleet Manager RBAC Cluster Admin"
+
+az role assignment create --role "${ROLE}" --assignee ${IDENTITY} --scope ${FLEET_ID}
+
+az fleet get-credentials -n demo -g rg-test --file hub
+
+KUBECONFIG=hub kubectl get memberclusters
+
+````
+
 ## Cloud Native
 
 - Agility
@@ -217,3 +242,224 @@ az maintenace assignment create --maintenance-configuration-id "/subscriptions/x
 
 
 ```
+
+Can then deploy to the hub, adding a CRD instance for a service export and cluster resource placement
+
+````
+
+apiVersion: networking.fleet.azure.com/v1alpha1
+kind: ServiceExport
+metadata:
+  name: demo
+  namespace: demo
+````
+
+Resource placement
+
+````
+apiVersion: fleet.azure.com/v1alpha1
+kind: ClusterResourcePlacement
+metadata:
+  name: demo
+spec:
+  resourceSelectors:
+    - group: ""
+      version: v1
+      kind: Namespace
+      name: demo
+  policy:
+    affinity:
+      clusterAffinity:
+        clusterSelectorTerms:
+          - labelSelector:
+              matchLabels:
+                fleet.azure.com/location: eastus
+````
+
+If multiple clusters have matching selector - resource deployed to both
+
+Need a multi cluster service (incorporates a load balancer to balance traffic across clusters)
+
+````
+apiVersion: networking.fleet.azure.com/v1alpha1
+kind: MultiClusterService
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  serviceImport:
+    name: demo
+
+````
+
+## Fleet Roadmap
+- Gateway API + L7 load balancing
+- Multi-cluster service mesh
+- Fleet-level identity federation
+- At-scale AKS cluster lifecycle management
+- Azure Service Operator integration
+- Region failover
+- Arc-enabled Kubernetes as member clusters
+
+
+# Secure your K8s environment
+
+## Recommended Best Practices
+
+### Build
+- Leverage Microsoft Defender for Containers for static analysis of images with GitHub Actions
+
+### Registry
+- Leverage MS Defender for Containers to protect images in ACR
+- Use Notary V2 Signing to provide code integrity (public preview in Q1 23)
+
+### Cluster
+- AAD / Azure RBAC for AuthN / AuthZ
+- Managed identity (Use instead of service principals at the cluster level)
+- Azure Policy - best practices (build on top of OPA Gatekeeper)
+- MS Defender for Containers to secure the API server
+- Image Cleaner to remove vulnerable stale images from the cluster (Preview)
+- AKS 1.25 (Preview)
+
+### Node
+- Auto-Upgrade node-image SKU to stay on latest patched VHD
+- Node Authorization to prevent node to node attacks
+- MS Defennder for Containers for Host protection
+- Mariner for minimal OS
+- Confidential VM for encrypted VM capabilities
+
+### Application
+- MS Defender for Containers for Runtime security (incorporating Falco)
+- CSI Secret Store or KMS for image secrets management
+- Workload Identity (preview)
+
+
+## Planned capabilities (Next 4 to 6 Months)
+
+### Build Security
+- Image secret scanning
+- Image malware scanning
+
+### Registry security
+- Notary V2
+- Vulnerability assessment of ditroless / scratch images
+- Publich Preview Image Quarantine
+
+### Cluster Security
+- CIS-Metrics-SErver kubelet-secure-tls
+- CIS Windows
+- GA Image cleaner
+- Public preview federated identity credential on AKS
+- Public preview instance metadata restriction
+- GA Custom CA trust (if need certs on nodes to allow access through proxy can manage in AKS)
+- Airgapped-no-egress
+- Azure policy on by default
+- Risk-baseed prioritization by attack vectors
+
+### Node Security
+- Kernel isolation public preview
+- CIS Disable SSH Public preview
+- Trusted VM
+- AAD Enabled SSH public preview
+- GA Disable SSH
+- Mariner CoS public preview
+- GA Mariner CoS
+
+### Application Security
+- Agentless posture
+- Drift prevention process
+- CIS Kubernetes benchmark in MDC
+- CIS Ubuntu benchmare in MDC
+- CIS Windows benchmarek in MDC
+- User namespace public preview
+- Public preview secrets discovery
+- GA Secrets discovery
+- GA Workload identity
+
+
+
+## Workload Identity
+Going GA early January
+
+AKS workload "asks" Azure AD can I access this resource?  AAD issues an Access Token for the pod.  Pod uses access token
+
+1. Kubectl projects service account token to the workload at a configurable path
+2. AKS workload sends projected, signed service account token and requests and AAD access token.
+3. AAD checks the trust on the app and validates using the incoming token agains the OpenID Discover Document.
+4. AAD issues access token for the AKS workload.
+5. AKS workload uses the AD access token to access Azure resources.
+
+feature flag to enabled workload id
+enable OICD issuer on cluster
+
+Bind service account to managed identity.  
+Tutorial for accessing key vault - 
+
+## Image Cleaner
+will now clean on a schedule anything listed in the image list
+
+"crictl purge" stale images 
+stale images with criteria (High or critical vuln is an example)
+Stale images sit on the node
+
+
+
+
+# Azure Service Operator
+K8s native way to deploy Azure resources
+
+
+## What is Azure Service Operator
+- way to provision Azure resources through the K8s API 
+- goal-seeking and eventually consistent
+- K8s Native - works with standard K8s tooling (Kustomize), avoids ARM ids in payloads as much as possible, K8s understands resource relationship and ownership
+
+
+## Advantages
+- Developer - defines Azure resources in YAML along with K8s resources
+- No hassle CI/CD pipelines - example integrate with Flux
+- Gitops integrated resource creation
+- desired state
+
+## Compare to ARM templates / BICEP
+### ASO
+- desired state / goal seeking
+- error-correcting
+
+### ARM Templates / BICEP
+- Create for creation, updates can be harder
+- State of source can diverge from template (after template submission)
+
+
+
+## ASO Compared to Terraform
+
+### ASO
+- Desired state / goal seeking
+- error-correcting
+- K8s native
+- Supports fewer resources (currently)
+
+### Terraform
+- Plan based
+- No automatic error correction
+- Not K8s natives (has integrations though)
+- Supports more resources
+
+
+https://github.com/azure-samples/azure-service-operator-samples
+
+## ASO Compared to Crossplane
+
+### ASO
+- Maintained by Azure
+- Mostly autogenerated
+- Only Azure
+- Think "Low level" exposing Azure as it is
+
+### Crossplane
+- Maintained by community
+- Manually crafted
+- Multiple cloud support
+- Think "high level" exposes Azure, but also higher-level concepts
+
